@@ -8,8 +8,15 @@ import tensorflow as tf
 import keras
 import matplotlib.pyplot as plt
 import pickle
+from keras.callbacks import EarlyStopping
+from sklearn.model_selection import KFold
+from sklearn.metrics import classification_report
+from resnet_pytorch import ResNet
+import CustomDataset
+
 
 SMALL_RATIO = 0.05
+LIMIT = 5  # classes
 
 
 def display_help():
@@ -33,8 +40,14 @@ def split_dataset(data_dir, train_dir, val_dir, val_ratio=0.2, small_data=False)
     os.makedirs(train_dir, exist_ok=True)
     os.makedirs(val_dir, exist_ok=True)
 
+    index = 0
+
     # Iterate over each class folder in the source data directory
     for class_name in os.listdir(data_dir):
+        if index >= LIMIT != 0:
+            return
+
+        index += 1
         class_path = os.path.join(data_dir, class_name)
         if os.path.isdir(class_path):
             # Create corresponding class directories in train and val directories
@@ -119,33 +132,60 @@ def load_dataset(data_dir, img_size=(64, 64)):
     return images, labels, class_names
 
 
-def apply_model(train_images, train_labels, test_images, test_labels, class_names):
+def train_custom_model(train_images, train_labels, test_images, test_labels, class_names):
     # Build the model
     model = keras.Sequential([
-        keras.layers.Conv2D(32, (3, 3), activation='relu', input_shape=(64, 64, 4)),
+        keras.layers.Conv2D(16, (3, 3), activation='relu', input_shape=(64, 64, 4)),
+        keras.layers.BatchNormalization(),
+        keras.layers.MaxPooling2D((2, 2)),
+        keras.layers.Conv2D(32, (3, 3), activation='relu'),
+        keras.layers.BatchNormalization(),
         keras.layers.MaxPooling2D((2, 2)),
         keras.layers.Conv2D(64, (3, 3), activation='relu'),
+        keras.layers.BatchNormalization(),
         keras.layers.MaxPooling2D((2, 2)),
         keras.layers.Flatten(),
-        keras.layers.Dense(64, activation='relu'),
+        keras.layers.Dense(64, activation='relu', kernel_regularizer=keras.regularizers.l2(0.001)),
+        keras.layers.Dropout(0.2),
         keras.layers.Dense(len(class_names), activation='softmax')
     ])
 
     # Compile the model
-    model.compile(optimizer='adam',
+    model.compile(optimizer="adam",
                   loss='sparse_categorical_crossentropy',
                   metrics=['accuracy'])
+
+    # early_stopping = EarlyStopping(monitor='val_loss', patience=10, restore_best_weights=True)
+
+    # kf = KFold(n_splits=5)
+    # for train_index, val_index in kf.split(train_images):
+    #     train_X, val_X = train_images[train_index], train_images[val_index]
+    #     train_Y, val_Y = train_labels[train_index], train_labels[val_index]
+    #     model.fit(train_X, train_Y, epochs=10, validation_data=(val_X, val_Y))
 
     # Train the model
     history = model.fit(train_images, train_labels, epochs=10,
                         validation_data=(test_images, test_labels))
 
+    return model
+
+
+def resnet18_model():
+    return ResNet.from_pretrained('resnet18', num_classes=10)
+
+
+def measure_performances(model, train_images, train_labels, test_images, test_labels, class_names):
     # Evaluate the model on the test dataset
     test_loss, test_acc = model.evaluate(test_images, test_labels)
     print('Test accuracy:', test_acc)
 
     # Make predictions on the test dataset
     predictions = model.predict(test_images)
+    predicted_labels = np.argmax(predictions, axis=1)
+
+    # Generate a classification report
+    report = classification_report(test_labels, predicted_labels, target_names=class_names)
+    print(report)
 
     # Plot some test images with their predicted labels
     fig = plt.figure(figsize=(8, 8))
@@ -208,11 +248,12 @@ if __name__ == "__main__":
             train_images, train_labels, test_images, test_labels, class_names = pickle.load(f)
         print("Loaded dataset from cache.")
     else:
+        print("Process dataset")
         train_images, train_labels, class_names = load_dataset(train_dir)
         test_images, test_labels, _ = load_dataset(val_dir)
         with open(dataset_cache, 'wb') as f:
             pickle.dump((train_images, train_labels, test_images, test_labels, class_names), f)
-        print("Processed and saved dataset to cache.")
+        print("Saved dataset to cache.")
 
     train_images = np.array(train_images)
     train_labels = np.array(train_labels)
@@ -223,4 +264,5 @@ if __name__ == "__main__":
     train_images = train_images / 255.0
     test_images = test_images / 255.0
 
-    apply_model(train_images, train_labels, test_images, test_labels, class_names)
+    custom_model = train_custom_model(train_images, train_labels, test_images, test_labels, class_names)
+    measure_performances(custom_model, train_images, train_labels, test_images, test_labels, class_names)
