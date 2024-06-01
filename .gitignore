@@ -3,3 +3,4 @@ data
 split_data
 small_split_data
 src/dataset_cache*
+plots

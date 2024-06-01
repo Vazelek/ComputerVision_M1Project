@@ -6,7 +6,7 @@ from PIL import Image
 import numpy as np
 
 SMALL_RATIO = 0.05
-LIMIT = 5  # classes
+LIMIT = 0  # classes
 
 
 def split_dataset(data_dir, train_dir, val_dir, val_ratio=0.2, small_data=False):

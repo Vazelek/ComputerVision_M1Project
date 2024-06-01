@@ -45,9 +45,8 @@ def plot_metrics(num_epochs, all_train_losses, all_val_losses, all_val_accuracie
                  save_dir):
     os.makedirs(save_dir, exist_ok=True)
     epochs = range(1, num_epochs + 1)
-    plt.figure(figsize=(20, 12))
+    plt.figure()
 
-    plt.subplot(3, 1, 1)
     for model_name in model_names:
         plt.plot(epochs, all_train_losses[model_name], label=f'{model_name} Train Loss')
     plt.title('Training Loss')
@@ -55,8 +54,8 @@ def plot_metrics(num_epochs, all_train_losses, all_val_losses, all_val_accuracie
     plt.ylabel('Loss')
     plt.legend()
     plt.savefig(os.path.join(save_dir, 'train_loss.png'))
+    plt.show()
 
-    plt.subplot(3, 1, 2)
     for model_name in model_names:
         plt.plot(epochs, all_val_losses[model_name], label=f'{model_name} Validation Loss')
     plt.title('Validation Loss')
@@ -64,16 +63,24 @@ def plot_metrics(num_epochs, all_train_losses, all_val_losses, all_val_accuracie
     plt.ylabel('Loss')
     plt.legend()
     plt.savefig(os.path.join(save_dir, 'validation_loss.png'))
+    plt.show()
 
-    plt.subplot(3, 1, 3)
     for model_name in model_names:
         plt.plot(epochs, all_val_accuracies[model_name], label=f'{model_name} Validation Accuracy')
-        plt.plot(epochs, all_val_f1_scores[model_name], '--', label=f'{model_name} Validation F1 Score')
-    plt.title('Validation Accuracy and F1 Score')
+    plt.title('Validation Accuracy')
     plt.xlabel('Epochs')
-    plt.ylabel('Metric')
+    plt.ylabel('Accuracy')
     plt.legend()
     plt.tight_layout()
-    plt.savefig(os.path.join(save_dir, 'validation_accuracy_f1.png'))
+    plt.savefig(os.path.join(save_dir, 'validation_accuracy.png'))
+    plt.show()
 
+    for model_name in model_names:
+        plt.plot(epochs, all_val_f1_scores[model_name], '--', label=f'{model_name} Validation F1 Score')
+    plt.title('Validation F1 score')
+    plt.xlabel('Epochs')
+    plt.ylabel('F1 score')
+    plt.legend()
+    plt.tight_layout()
+    plt.savefig(os.path.join(save_dir, 'validation_f1_score.png'))
     plt.show()

@@ -95,7 +95,7 @@ if __name__ == "__main__":
         "custom_model": custom_model.create_custom_model(input_shape, num_classes),
         "resnet18": models.get_model("resnet18", num_classes),
         "alexnet": models.get_model("alexnet", num_classes),
-        "vgg16": models.get_model("vgg16", num_classes),
+        # "vgg16": models.get_model("vgg16", num_classes), # take too long to train
         "densenet121": models.get_model("densenet121", num_classes),
         "mobilenet_v2": models.get_model("mobilenet_v2", num_classes)
     }
