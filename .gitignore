@@ -4,6 +4,4 @@ split_data
 small_split_data
 src/dataset_cache*
 src/__pycache__
-plots
-models
 CustomImages
