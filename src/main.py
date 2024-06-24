@@ -1,6 +1,8 @@
 import os
 import shutil
 import sys
+import time
+
 import numpy as np
 import pickle
 import tensorflow as tf
@@ -8,25 +10,34 @@ from keras.callbacks import EarlyStopping
 from sklearn.model_selection import KFold
 from sklearn.metrics import classification_report
 import torch
+import keras
 from torch.utils.data import DataLoader, TensorDataset
 from torchvision import transforms
 import data_utils
 import custom_model
 import models
 import train_evaluate
+from sklearn.metrics import f1_score
+
+
+CURRENT_PATH = os.path.dirname(os.path.abspath(__file__))
+os.chdir(CURRENT_PATH)
 
 
 def display_help():
     print(">>> python main.py [OPTIONS]\n")
     print("\t-r, --reload\tRecreate split_data directory and data cache")
-    print("\t-s,  --small\t\tUse of a smaller data file")
+    print("\t-s,  --small\t\tUse of a smaller dataset (for testing purposes)")
     print("\t-h,  --help\t\t\tDisplay this help")
 
 
 if __name__ == "__main__":
     data_dir = '../data'
+    custom_images_dir = '../CustomImages'
+    data_dirs = [data_dir, custom_images_dir]
     large_split_data_dir = '../split_data'
     small_split_data_dir = '../small_split_data'
+    models_dir = '../models'
     selected_data_dir = large_split_data_dir
 
     reload = False
@@ -58,12 +69,12 @@ if __name__ == "__main__":
         print("Splitting small data")
         if os.path.isdir(small_split_data_dir):
             shutil.rmtree(small_split_data_dir)
-        data_utils.split_dataset(data_dir, train_dir, val_dir, val_ratio=0.2, small_data=True)
+        data_utils.split_dataset(data_dirs, train_dir, val_dir, val_ratio=0.2, small_data=True)
     elif not small_data and (reload or not os.path.isdir(large_split_data_dir)):
         print("Splitting data")
         if os.path.isdir(large_split_data_dir):
             shutil.rmtree(large_split_data_dir)
-        data_utils.split_dataset(data_dir, train_dir, val_dir, val_ratio=0.2)
+        data_utils.split_dataset(data_dirs, train_dir, val_dir, val_ratio=0.2)
 
     dataset_cache = 'dataset_cache' + ('_small' if small_data else '') + '.pkl'
     if os.path.exists(dataset_cache) and not reload:
@@ -95,15 +106,17 @@ if __name__ == "__main__":
         "custom_model": custom_model.create_custom_model(input_shape, num_classes),
         "resnet18": models.get_model("resnet18", num_classes),
         "alexnet": models.get_model("alexnet", num_classes),
-        # "vgg16": models.get_model("vgg16", num_classes), # take too long to train
+        # "vgg16": models.get_model("vgg16", num_classes), # takes too long to train and has bad results
         "densenet121": models.get_model("densenet121", num_classes),
         "mobilenet_v2": models.get_model("mobilenet_v2", num_classes)
     }
 
     all_train_losses = {model_name: [] for model_name in models_to_train}
+    all_train_accuracies = {model_name: [] for model_name in models_to_train}
     all_val_losses = {model_name: [] for model_name in models_to_train}
     all_val_accuracies = {model_name: [] for model_name in models_to_train}
     all_val_f1_scores = {model_name: [] for model_name in models_to_train}
+    all_train_time = {model_name: [] for model_name in models_to_train}
 
     num_epochs = 10
     criterion = torch.nn.CrossEntropyLoss()
@@ -114,30 +127,85 @@ if __name__ == "__main__":
     train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True)
     test_loader = DataLoader(test_dataset, batch_size=32, shuffle=False)
 
+    models_dir = '../models'
+    if not os.path.isdir(models_dir):
+        os.makedirs(models_dir, exist_ok=True)
+
     for model_name, model in models_to_train.items():
         print(f"Training {model_name}...")
         if model_name == "custom_model":
-            history = model.fit(train_images, train_labels, epochs=num_epochs, validation_data=(test_images, test_labels))
-            train_losses = history.history['loss']
-            val_losses = history.history['val_loss']
-            val_accuracies = history.history['val_accuracy']
-            all_train_losses[model_name].extend(train_losses)
-            all_val_losses[model_name].extend(val_losses)
-            all_val_accuracies[model_name].extend(val_accuracies)
-            # Custom model does not provide F1 score directly, so we calculate it separately
-            val_f1_scores = [0] * num_epochs
-            all_val_f1_scores[model_name].extend(val_f1_scores)
+            save_file = os.path.join(models_dir, model_name + ".keras")
         else:
-            model = model.to(device)
-            optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
-            for epoch in range(num_epochs):
-                train_loss = train_evaluate.train(model, train_loader, criterion, optimizer, device)
-                val_loss, val_accuracy, val_f1_score = train_evaluate.validate(model, test_loader, criterion, device)
-                all_train_losses[model_name].append(train_loss)
-                all_val_losses[model_name].append(val_loss)
-                all_val_accuracies[model_name].append(val_accuracy)
-                all_val_f1_scores[model_name].append(val_f1_score)
-                print(f"Epoch {epoch + 1}/{num_epochs}, Train Loss: {train_loss:.4f}, Validation Loss: {val_loss:.4f}, Validation Accuracy: {val_accuracy:.4f}, Validation F1 Score: {val_f1_score:.4f}")
+            save_file = os.path.join(models_dir, model_name + ".pth")
+
+        if os.path.isfile(save_file) and not reload:
+            if model_name == "custom_model":
+                model = keras.models.load_model(save_file)
+                print(f"Model {model_name} loaded from models/")
+            else:
+                model.load_state_dict(torch.load(save_file))
+                print(f"Model {model_name} loaded from models/")
+        else:
+            if os.path.isfile(save_file):
+                os.remove(save_file)
+
+            start_time = time.time()
+            end_time = 0
+
+            if model_name == "custom_model":
+                for epoch in range(num_epochs):
+                    history = model.fit(train_images, train_labels, epochs=1,
+                                        validation_data=(test_images, test_labels), verbose=0)
+
+                    end_time = time.time()
+
+                    # Get training and validation loss and accuracy
+                    train_loss = history.history['loss'][-1]
+                    train_accuracy = history.history['accuracy'][-1]
+                    val_loss = history.history['val_loss'][-1]
+                    val_accuracy = history.history['val_accuracy'][-1]
+
+                    # Predict on validation data
+                    val_predictions = np.argmax(model.predict(test_images), axis=-1)
+
+                    # Calculate F1 score
+                    val_f1_score = f1_score(test_labels, val_predictions, average='weighted', zero_division=1)
+
+                    all_train_losses[model_name].append(train_loss)
+                    all_train_accuracies[model_name].append(train_accuracy)
+                    all_val_losses[model_name].append(val_loss)
+                    all_val_accuracies[model_name].append(val_accuracy)
+                    all_val_f1_scores[model_name].append(val_f1_score)
+
+                    print(
+                        f"Epoch {epoch + 1}/{num_epochs}, Train Loss: {train_loss:.4f}, Train Accuracy: {train_accuracy:.4f}, Validation Loss: {val_loss:.4f}, Validation Accuracy: {val_accuracy:.4f}, Validation F1 Score: {val_f1_score:.4f}")
+
+                model.save(save_file)
+                print(f"Model {model_name} saved in models/")
+            else:
+                model = model.to(device)
+                optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
+                for epoch in range(num_epochs):
+                    train_loss, train_accuracy = train_evaluate.train(model, train_loader, criterion, optimizer, device)
+
+                    end_time = time.time()
+
+                    val_loss, val_accuracy, val_f1_score = train_evaluate.validate(model, test_loader, criterion,
+                                                                                   device)
+
+                    all_train_losses[model_name].append(train_loss)
+                    all_train_accuracies[model_name].append(train_accuracy)
+                    all_val_losses[model_name].append(val_loss)
+                    all_val_accuracies[model_name].append(val_accuracy)
+                    all_val_f1_scores[model_name].append(val_f1_score)
+                    print(
+                        f"Epoch {epoch + 1}/{num_epochs}, Train Loss: {train_loss:.4f}, Train Accuracy: {train_accuracy:.4f}, Validation Loss: {val_loss:.4f}, Validation Accuracy: {val_accuracy:.4f}, Validation F1 Score: {val_f1_score:.4f}")
+
+                torch.save(model.state_dict(), save_file)
+                print(f"Model {model_name} saved in models/")
+
+            train_time = end_time - start_time
+            all_train_time[model_name] = train_time
 
     save_dir = '../plots'
-    train_evaluate.plot_metrics(num_epochs, all_train_losses, all_val_losses, all_val_accuracies, all_val_f1_scores, models_to_train.keys(), save_dir)
+    train_evaluate.plot_metrics(num_epochs, all_train_losses, all_train_accuracies, all_val_losses, all_val_accuracies, all_val_f1_scores, all_train_time, models_to_train.keys(), save_dir)
