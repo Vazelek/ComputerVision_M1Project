@@ -18,6 +18,9 @@ import custom_model
 import models
 import train_evaluate
 from sklearn.metrics import f1_score
+from sklearn.metrics import confusion_matrix
+import seaborn as sns
+import matplotlib.pyplot as plt
 
 
 CURRENT_PATH = os.path.dirname(os.path.abspath(__file__))
@@ -105,7 +108,7 @@ if __name__ == "__main__":
     models_to_train = {
         "custom_model": custom_model.create_custom_model(input_shape, num_classes),
         "resnet18": models.get_model("resnet18", num_classes),
-        "alexnet": models.get_model("alexnet", num_classes),
+        # "alexnet": models.get_model("alexnet", num_classes), # horizontal results for all scores (only one class is detected)
         # "vgg16": models.get_model("vgg16", num_classes), # takes too long to train and has bad results
         "densenet121": models.get_model("densenet121", num_classes),
         "mobilenet_v2": models.get_model("mobilenet_v2", num_classes)
@@ -117,6 +120,7 @@ if __name__ == "__main__":
     all_val_accuracies = {model_name: [] for model_name in models_to_train}
     all_val_f1_scores = {model_name: [] for model_name in models_to_train}
     all_train_time = {model_name: [] for model_name in models_to_train}
+    all_confusion_matrix = {model_name: [] for model_name in models_to_train}
 
     num_epochs = 10
     criterion = torch.nn.CrossEntropyLoss()
@@ -150,14 +154,11 @@ if __name__ == "__main__":
                 os.remove(save_file)
 
             start_time = time.time()
-            end_time = 0
 
             if model_name == "custom_model":
                 for epoch in range(num_epochs):
                     history = model.fit(train_images, train_labels, epochs=1,
                                         validation_data=(test_images, test_labels), verbose=0)
-
-                    end_time = time.time()
 
                     # Get training and validation loss and accuracy
                     train_loss = history.history['loss'][-1]
@@ -170,6 +171,11 @@ if __name__ == "__main__":
 
                     # Calculate F1 score
                     val_f1_score = f1_score(test_labels, val_predictions, average='weighted', zero_division=1)
+
+                    if epoch + 1 == num_epochs:
+                        # Calculate confusion matrix
+                        cm = confusion_matrix(test_labels, val_predictions)
+                        all_confusion_matrix[model_name] = cm
 
                     all_train_losses[model_name].append(train_loss)
                     all_train_accuracies[model_name].append(train_accuracy)
@@ -188,24 +194,29 @@ if __name__ == "__main__":
                 for epoch in range(num_epochs):
                     train_loss, train_accuracy = train_evaluate.train(model, train_loader, criterion, optimizer, device)
 
-                    end_time = time.time()
-
-                    val_loss, val_accuracy, val_f1_score = train_evaluate.validate(model, test_loader, criterion,
-                                                                                   device)
+                    val_loss, val_accuracy, val_f1_score, cm = train_evaluate.validate(model, test_loader, criterion, device, class_names)
 
                     all_train_losses[model_name].append(train_loss)
                     all_train_accuracies[model_name].append(train_accuracy)
                     all_val_losses[model_name].append(val_loss)
                     all_val_accuracies[model_name].append(val_accuracy)
                     all_val_f1_scores[model_name].append(val_f1_score)
+
+                    if epoch + 1 == num_epochs:
+                        all_confusion_matrix[model_name] = cm
+
                     print(
                         f"Epoch {epoch + 1}/{num_epochs}, Train Loss: {train_loss:.4f}, Train Accuracy: {train_accuracy:.4f}, Validation Loss: {val_loss:.4f}, Validation Accuracy: {val_accuracy:.4f}, Validation F1 Score: {val_f1_score:.4f}")
 
                 torch.save(model.state_dict(), save_file)
                 print(f"Model {model_name} saved in models/")
 
+            end_time = time.time()
+
             train_time = end_time - start_time
             all_train_time[model_name] = train_time
 
+            print(f"{model_name} training finished in {train_time} seconds")
+
     save_dir = '../plots'
-    train_evaluate.plot_metrics(num_epochs, all_train_losses, all_train_accuracies, all_val_losses, all_val_accuracies, all_val_f1_scores, all_train_time, models_to_train.keys(), save_dir)
+    train_evaluate.plot_metrics(num_epochs, all_train_losses, all_train_accuracies, all_val_losses, all_val_accuracies, all_val_f1_scores, all_train_time, all_confusion_matrix, models_to_train.keys(), save_dir, class_names)

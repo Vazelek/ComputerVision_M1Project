@@ -4,6 +4,8 @@ import torch.optim as optim
 from sklearn.metrics import accuracy_score, f1_score
 import matplotlib.pyplot as plt
 import os
+import seaborn as sns
+from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay
 
 
 def train(model, train_loader, criterion, optimizer, device):
@@ -30,7 +32,7 @@ def train(model, train_loader, criterion, optimizer, device):
     return train_loss, train_accuracy
 
 
-def validate(model, test_loader, criterion, device):
+def validate(model, test_loader, criterion, device, class_names):
     model.eval()
     running_loss = 0.0
     correct = 0
@@ -53,17 +55,19 @@ def validate(model, test_loader, criterion, device):
             all_labels.extend(labels.cpu().numpy())
             all_preds.extend(predicted.cpu().numpy())
 
+    cm = confusion_matrix(all_labels, all_preds, labels=range(len(class_names)))
+
     val_loss = running_loss / len(test_loader)
     val_accuracy = correct / total
 
     val_f1_score = f1_score(all_labels, all_preds, average='weighted')
-    return val_loss, val_accuracy, val_f1_score
+    return val_loss, val_accuracy, val_f1_score, cm
 
 
-def plot_metrics(num_epochs, train_losses, train_accuracies, val_losses, val_accuracies, val_f1_scores, train_times, model_names, save_dir):
+def plot_metrics(num_epochs, train_losses, train_accuracies, val_losses, val_accuracies, val_f1_scores, train_times, confusion_matrices, model_names, save_dir, class_names):
     epochs = range(1, num_epochs + 1)
 
-    plt.figure(figsize=(5, 5))
+    plt.figure(figsize=(10, 5))
     for model_name in model_names:
         if len(train_losses[model_name]) == 0:
             continue
@@ -148,6 +152,19 @@ def plot_metrics(num_epochs, train_losses, train_accuracies, val_losses, val_acc
 
     plt.title('Training time')
     plt.xlabel('Model')
-    plt.ylabel('Train time')
+    plt.ylabel('Train time (s)')
     plt.savefig(os.path.join(save_dir, 'train_time.png'))
     plt.show()
+
+    for model_name in model_names:
+        if len(train_losses[model_name]) == 0:
+            continue
+
+        disp = ConfusionMatrixDisplay(confusion_matrix=confusion_matrices[model_name], display_labels=class_names)
+        fig, ax = plt.subplots(figsize=(100, 100))
+        disp.plot(ax=ax)
+        plt.title(f'Confusion Matrix for {model_name}')
+        plt.xticks(rotation=90)
+        plt.savefig(os.path.join(save_dir, f'{model_name}_confusion_matrix.png'))
+        # plt.show()
+        plt.close()
