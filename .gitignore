@@ -5,3 +5,4 @@ small_split_data
 src/dataset_cache*
 src/__pycache__
 CustomImages
+TestImages

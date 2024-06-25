@@ -29,7 +29,7 @@ os.chdir(CURRENT_PATH)
 
 def display_help():
     print(">>> python main.py [OPTIONS]\n")
-    print("\t-r, --reload\tRecreate split_data directory and data cache")
+    print("\t-r, --reload\tRecreate split_data directory and data cache and retrain models")
     print("\t-s,  --small\t\tUse of a smaller dataset (for testing purposes)")
     print("\t-h,  --help\t\t\tDisplay this help")
 

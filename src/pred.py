@@ -8,6 +8,7 @@ import matplotlib.pyplot as plt
 from PIL import Image
 from torchvision import transforms
 import models
+import sys
 
 CURRENT_PATH = os.path.dirname(os.path.abspath(__file__))
 os.chdir(CURRENT_PATH)
@@ -31,30 +32,20 @@ def preprocess_image(file_path, img_size=(64, 64)):
         return None
 
 
-def load_image_dataset(image_dir, img_size, all_class_names):
+def load_image_dataset(image_dir, img_size):
+    images = []
     file_paths = []
-    labels = []
-    present_class_indices = []
 
-    for class_index, class_name in enumerate(all_class_names):
-        class_dir = os.path.join(image_dir, class_name)
-        if os.path.isdir(class_dir):
-            class_found = False
-            for file_name in os.listdir(class_dir):
-                file_path = os.path.join(class_dir, file_name)
-                if os.path.isfile(file_path) and file_path.endswith(('.png', '.jpg', '.jpeg')):
-                    img = preprocess_image(file_path, img_size)
-                    if img is not None:
-                        file_paths.append(img)
-                        labels.append(class_index)
-                        class_found = True
-            if class_found:
-                present_class_indices.append(class_index)
+    for file_name in os.listdir(image_dir):
+        file_path = os.path.join(image_dir, file_name)
+        if os.path.isfile(file_path) and file_path.endswith(('.png', '.jpg', '.jpeg')):
+            img = preprocess_image(file_path, img_size)
+            if img is not None:
+                images.append(img)
+                file_paths.append(file_path)
 
-    images = np.array(file_paths)
-    labels = np.array(labels)
-
-    return images, labels, present_class_indices
+    images = np.array(images)
+    return images, file_paths
 
 
 def predict_with_keras_model(model, images):
@@ -80,8 +71,8 @@ def predict_images(image_dir, full_data_dir):
     all_class_names = os.listdir(full_data_dir)
     all_class_names.sort()
 
-    # Load images and labels from the custom image directory
-    images, labels, present_class_indices = load_image_dataset(image_dir, img_size, all_class_names)
+    # Load images from the custom image directory
+    images, file_paths = load_image_dataset(image_dir, img_size)
 
     models_dir = '../models'
 
@@ -103,20 +94,39 @@ def predict_images(image_dir, full_data_dir):
         fig = plt.figure(figsize=(16, 16))
         fig.suptitle(f"Predictions for the {model_type} model")
 
-        for i, class_index in enumerate(present_class_indices):
+        for i, img_path in enumerate(file_paths):
             ax = fig.add_subplot(4, 4, i + 1)
-            class_indices = np.where(labels == class_index)[0]
-            if len(class_indices) == 0:
-                continue
-            img_idx = class_indices[0]
-            ax.imshow(images[img_idx])
-            predicted_label = np.argmax(predictions[img_idx])
-            true_label = labels[img_idx]
-            ax.set_title("Predicted: {}\nTrue:{}".format(all_class_names[predicted_label], all_class_names[true_label]))
+            ax.imshow(images[i])
+            predicted_label = np.argmax(predictions[i])
+            ax.set_title(f"Predicted: {all_class_names[predicted_label]}")
             ax.axis('off')
+
+            if i >= 15:  # Show at most 16 images
+                break
 
         plt.show()
 
 
+def display_help():
+    print(">>> python pred.py <directory_name>\n")
+    print("\t<directory_name>\tThe directory where are the images you want to predict there class")
+    exit(1)
+
+
 if __name__ == "__main__":
-    predict_images("../CustomImages", "../data")
+    test_dir = ""
+    if len(sys.argv) > 2:
+        print(f"Too many arguments ({len(sys.argv) - 1}/1)\n")
+        display_help()
+    elif len(sys.argv) == 2:
+        if os.path.exists("../" + sys.argv[1]):
+            test_dir = "../" + sys.argv[1]
+        else:
+            print("\"" + sys.argv[1] + "\": Directory does not exist\n")
+            display_help()
+    else:
+        print("No directory name provided\n")
+        display_help()
+
+    print("Testing with directory " + test_dir.split("/")[-1])
+    predict_images(test_dir, "../data")
