@@ -160,20 +160,16 @@ if __name__ == "__main__":
                     history = model.fit(train_images, train_labels, epochs=1,
                                         validation_data=(test_images, test_labels), verbose=0)
 
-                    # Get training and validation loss and accuracy
                     train_loss = history.history['loss'][-1]
                     train_accuracy = history.history['accuracy'][-1]
                     val_loss = history.history['val_loss'][-1]
                     val_accuracy = history.history['val_accuracy'][-1]
 
-                    # Predict on validation data
                     val_predictions = np.argmax(model.predict(test_images), axis=-1)
 
-                    # Calculate F1 score
                     val_f1_score = f1_score(test_labels, val_predictions, average='weighted', zero_division=1)
 
                     if epoch + 1 == num_epochs:
-                        # Calculate confusion matrix
                         cm = confusion_matrix(test_labels, val_predictions)
                         all_confusion_matrix[model_name] = cm
 

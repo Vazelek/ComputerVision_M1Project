@@ -95,13 +95,13 @@ def predict_images(image_dir, full_data_dir):
         fig.suptitle(f"Predictions for the {model_type} model")
 
         for i, img_path in enumerate(file_paths):
-            ax = fig.add_subplot(4, 4, i + 1)
+            ax = fig.add_subplot(8, 8, i + 1)
             ax.imshow(images[i])
             predicted_label = np.argmax(predictions[i])
-            ax.set_title(f"Predicted: {all_class_names[predicted_label]}")
+            ax.set_title(all_class_names[predicted_label])
             ax.axis('off')
 
-            if i >= 15:  # Show at most 16 images
+            if i >= 63:
                 break
 
         plt.show()
